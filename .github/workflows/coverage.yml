@@ -1,0 +1,161 @@
+name: Linux coverage
+on:
+  workflow_dispatch:
+    inputs:
+      source_repository:
+        description: Source repository
+        type: choice
+        options: [ReallocAll/spark, EndstoneMC/spark]
+        default: ReallocAll/spark
+      source_ref:
+        description: Source branch, tag or full commit SHA
+        type: string
+        default: develop
+      upload_to_codecov:
+        description: Upload to the selected source repository on Codecov
+        type: boolean
+        default: true
+  schedule:
+    - cron: '17 */6 * * *'
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      source_repository: ${{ steps.resolve.outputs.source_repository }}
+      source_ref: ${{ steps.resolve.outputs.source_ref }}
+      ref_type: ${{ steps.resolve.outputs.ref_type }}
+      source_sha: ${{ steps.resolve.outputs.source_sha }}
+      codecov_branch: ${{ steps.resolve.outputs.codecov_branch }}
+      infra_sha: ${{ steps.resolve.outputs.infra_sha }}
+      run_url: ${{ steps.resolve.outputs.run_url }}
+      upload_to_codecov: ${{ steps.resolve.outputs.upload_to_codecov }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          UPLOAD_TO_CODECOV: ${{ inputs.upload_to_codecov }}
+        run: python scripts/resolve.py --output prepare.json --github-output "$GITHUB_OUTPUT"
+      - name: Check selected token presence
+        env:
+          PERSONAL_TOKEN_PRESENT: ${{ secrets.CODECOV_TOKEN != '' }}
+          ENDSTONE_TOKEN_PRESENT: ${{ secrets.CODECOV_TOKEN_ENDSTONE != '' }}
+        run: python scripts/resolve.py --output prepare.json --check-token-only
+  build:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Initialize failure diagnostics
+        env:
+          PREPARED: ${{ toJSON(needs.prepare.outputs) }}
+        run: |
+          mkdir -p reports
+          python -c 'import json,os; d=json.loads(os.environ["PREPARED"]); d.update(status="failed",toolchains={}); json.dump(d,open("reports/metadata.json","w"),indent=2)'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.infra_sha }}
+          path: infra
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ needs.prepare.outputs.source_repository }}
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install explicit toolchain
+        run: bash infra/scripts/install_tools.sh 2>&1 | tee reports/install-tools.log
+      - name: Build and report
+        env:
+          SOURCE_REPO: ${{ needs.prepare.outputs.source_repository }}
+          SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
+          REF_TYPE: ${{ needs.prepare.outputs.ref_type }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          CODECOV_BRANCH: ${{ needs.prepare.outputs.codecov_branch }}
+          INFRA_SHA: ${{ needs.prepare.outputs.infra_sha }}
+          RUN_URL: ${{ needs.prepare.outputs.run_url }}
+        run: |
+          python infra/scripts/build_coverage.py --source source --reports reports \
+            --source-repo "$SOURCE_REPO" --source-ref "$SOURCE_REF" --source-sha "$SOURCE_SHA" \
+            --ref-type "$REF_TYPE" --branch "$CODECOV_BRANCH" --infra-sha "$INFRA_SHA" \
+            --run-id "$GITHUB_RUN_ID" --run-url "$RUN_URL"
+          python infra/scripts/validate_report.py --source source --report reports/coverage.xml --metadata reports/metadata.json
+      - name: Summarize result
+        if: always()
+        env:
+          BUILD_STATUS: ${{ job.status }}
+        run: |
+          python - <<'PY'
+          import html, json, os
+          from pathlib import Path
+          data = json.loads(Path('reports/metadata.json').read_text())
+          data['status'] = os.environ['BUILD_STATUS']
+          Path('reports/metadata.json').write_text(json.dumps(data, indent=2) + '\n')
+          fields = {k: data.get(k, 'unavailable') for k in ('status', 'source_repository', 'source_ref', 'ref_type', 'source_sha', 'infra_sha', 'run_url', 'test-count', 'coverage')}
+          if 'coverage' not in data and Path('reports/summary.json').exists():
+              summary = json.loads(Path('reports/summary.json').read_text())
+              fields['coverage'] = {k: summary.get(k) for k in ('line_total', 'line_covered', 'line_percent')}
+          if Path('reports/failure.txt').exists():
+              fields['failure'] = Path('reports/failure.txt').read_text()
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
+              stream.write('<pre>' + html.escape(json.dumps(fields, indent=2)) + '</pre>\n')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/
+          if-no-files-found: error
+          retention-days: 14
+  upload:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.upload_to_codecov == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.infra_sha }}
+          path: infra
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ needs.prepare.outputs.source_repository }}
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          path: source
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports
+      - name: Validate report provenance and contents
+        env:
+          EXPECTED: ${{ toJSON(needs.prepare.outputs) }}
+        run: |
+          python infra/scripts/verify_artifact.py
+          python infra/scripts/validate_report.py --source source --report reports/coverage.xml --metadata reports/metadata.json
+      - name: Upload to selected source repository
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          version: v11.3.1
+          token: ${{ secrets[needs.prepare.outputs.source_repository == 'ReallocAll/spark' && 'CODECOV_TOKEN' || 'CODECOV_TOKEN_ENDSTONE'] }}
+          slug: ${{ needs.prepare.outputs.source_repository }}
+          override_commit: ${{ needs.prepare.outputs.source_sha }}
+          override_branch: ${{ needs.prepare.outputs.codecov_branch }}
+          working-directory: source
+          root_dir: ${{ github.workspace }}/source
+          files: ${{ github.workspace }}/reports/coverage.xml
+          disable_search: true
+          plugins: noop
+          fail_ci_if_error: true

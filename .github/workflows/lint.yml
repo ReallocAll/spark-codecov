@@ -1,0 +1,33 @@
+name: Infrastructure checks
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/**', 'scripts/**', 'tests/**', 'cmake/**']
+  pull_request:
+    paths: ['.github/workflows/**', 'scripts/**', 'tests/**', 'cmake/**']
+permissions:
+  contents: read
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - run: |
+          python -m compileall -q scripts tests
+          python -m unittest discover -s tests -v
+          bash -n scripts/install_tools.sh
+      - name: Validate workflows with checksum-verified actionlint
+        run: |
+          base=https://github.com/rhysd/actionlint/releases/download/v1.7.12
+          curl -fsSL "$base/actionlint_1.7.12_linux_amd64.tar.gz" -o /tmp/actionlint.tar.gz
+          curl -fsSL "$base/actionlint_1.7.12_checksums.txt" -o /tmp/actionlint-checksums.txt
+          expected=$(awk '$2 == "actionlint_1.7.12_linux_amd64.tar.gz" {print $1}' /tmp/actionlint-checksums.txt)
+          test -n "$expected"
+          echo "$expected  /tmp/actionlint.tar.gz" | sha256sum --check --strict
+          tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+          /tmp/actionlint -shellcheck=""
