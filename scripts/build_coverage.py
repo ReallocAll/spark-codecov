@@ -84,7 +84,7 @@ def main():
         failed = run("ctest", ["ctest", "--test-dir", str(build), "--output-on-failure", "--no-tests=error", "--parallel", "1", "--output-junit", str(reports / "ctest.xml")], check=False) != 0
         if not any(build.rglob("*.gcda")):
             raise RuntimeError("Tests produced no gcda files")
-        run("gcovr", ["gcovr", "--root", str(source), "--filter", "src/", "--gcov-executable", "llvm-cov-20 gcov", "--xml", str(reports / "coverage.xml"), "--html-details", str(reports / "index.html"), "--html-self-contained", "--json-summary", str(reports / "summary.json"), "--print-summary", str(build)])
+        run("gcovr", ["gcovr", "--root", str(source), "--filter", "src/", "--merge-lines", "--gcov-executable", "llvm-cov-20 gcov", "--xml", str(reports / "coverage.xml"), "--html-details", str(reports / "index.html"), "--html-self-contained", "--json-summary", str(reports / "summary.json"), "--print-summary", str(build)])
         metadata["status"] = "failed" if failed else "success"
     except Exception as exc:
         failed = True
