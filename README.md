@@ -2,6 +2,10 @@
 
 此仓库独立构建 `ReallocAll/spark` 或 `EndstoneMC/spark` 的指定提交，执行 Linux 离线 CTest，生成 Cobertura XML、可离线浏览的详细 HTML 和诊断日志，并可上传到对应源仓库的 Codecov。不会修改或提交源仓库文件。
 
+[2026-09-11 验证记录](VALIDATION.md)：个人仓库 72/72、组织仓库 29/29 测试通过，两者报告有效；个人上传已确认服务端处理和归属，组织上传仍需配置 `CODECOV_TOKEN_ENDSTONE` 后验证。
+
+个人报告的 gcovr XML 行覆盖率为 73.55%，Codecov 为 49.49%：服务端移除部分行记录，并将分支未完全覆盖的命中行计为 partial、排除在分子之外。服务端全部文件与行已确认属于 XML 的 `src/` 集合；具体计数、公式及修正规则见验证记录。
+
 覆盖范围是该 Linux 配置实际编译的 `src/` 实现及实例化的头文件代码，包括手写 proto；测试代码、Conan 和 FetchContent 依赖不计入报告。报告不代表 Windows、真实 BDS 或玩家交互场景覆盖率，也不表示未编译文件已被测量。
 
 ## 启动
@@ -36,7 +40,7 @@ gh run download RUN_ID --repo ReallocAll/spark-codecov --dir reports
 
 解析 job 先冻结源提交 SHA，构建与上传都检出该 SHA。Codecov 使用源仓库 slug 与源 SHA，分支使用真实分支名；标签使用 `refs/tags/<名称>`、直接 SHA 使用完整 SHA 作为独立报告归属标签，这些不声明存在同名 Git 分支。工作流不会伪造 PR。
 
-上传 Action 成功说明请求成功提交，不等于服务端最终处理完成。可检查对应 Codecov 页面，或 `https://api.codecov.io/api/v2/github/{owner}/repos/spark/commits/{sha}/` 的提交身份与处理状态；只有正确 SHA 且状态为 `processed` 才能确认归属和处理完成，HTTP 200 本身不足以确认。
+上传 Action 成功说明请求成功提交，不等于服务端最终处理完成。可检查对应 Codecov 页面，或 `https://api.codecov.io/api/v2/github/{owner}/repos/spark/commits/{sha}/` 的提交身份与处理状态；本次实测提交状态为 `complete`；同一路径追加 `uploads/` 可检查上传状态 `merged`，并核对 `build_url` 指向当前 Actions 运行。正确 SHA、完成状态及本次运行的上传记录共同确认处理与归属，HTTP 200 或历史提交记录本身不足以确认。
 
 ## 构建约定与故障
 
