@@ -1,0 +1,40 @@
+name: ELF configuration diagnostic
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - run: mkdir -p reports
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: infra
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ReallocAll/spark
+          ref: 1c0e54981fab6735bee714394012ba905f817b97
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install diagnostic toolchain
+        run: |
+          bash infra/scripts/install_tools.sh 2>&1 | tee reports/install.log
+          sudo apt-get install -y gdb 2>&1 | tee reports/install-gdb.log
+      - name: Compare modes and inspect pointers
+        run: python infra/scripts/diagnose_elf.py --source source --reports reports
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: elf-diagnostic-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/
+          if-no-files-found: error
+          retention-days: 14
