@@ -48,6 +48,10 @@ Ubuntu 24.04 显式安装 LLVM/Clang 20、覆盖率 runtime、libc++20 和 libc+
 
 构建会校验依赖配置、覆盖率目标和编译命令；CTest 测试数必须大于零，测试后必须产生 gcda。测试失败仍尝试生成报告，整体保持失败且不上传；失败日志也归档。任意历史或未来源 ref 可能不兼容当前工具链、preset 或测试布局，这会明确失败，需检查日志，不能据此断言源代码本身有缺陷。真实执行的测试数写入 metadata，不固定为某个版本的数量。
 
+少数 gateway 共享库的 ELF 合约禁止启动与退出回调，与 gcov 运行时不兼容。[目标豁免策略](cmake/coverage-exemptions.json)仅对已审查的目标名称、类型、声明目录、完整源文件集合和显式 `-nostartfiles` 组合停止覆盖率注入；parser fixture 还必须声明 `SPARK_GATEWAY_PARSER_FIXTURE=1`。这些目标仍按源配置构建，所有测试与 ELF 校验照常执行，不移除编译或链接选项。未知目标或合约变化立即失败。
+
+历史版本的五个 gateway 共享库各有一个未插桩的 `src/native/alloc/linux_allocation_gateway.cpp` 编译副本，因此该实现不被测量。当前源版本仅豁免 parser fixture 的两个测试编译命令，未插桩的 `src/` 实现命令数为零；生产 `spark_linux_permanent_gateway` 和测试 `spark_linux_gateway_test_backend` 静态目标仍插桩。同一源文件在其他普通目标中仍必须插桩；仅在豁免对象中实例化的头文件代码不被测量，不伪造零覆盖记录。Artifact 的 `coverage-exemptions.json` 及 metadata 记录实际豁免目标、原因、策略版本、实现命令的总数/插桩数/豁免数和未跳过测试的事实。
+
 ## 参考
 
 - [GitHub workflow syntax](https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions)

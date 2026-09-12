@@ -1,0 +1,11 @@
+{
+  "policy_version": 1,
+  "targets": {
+    "spark_allocation_gateway_v1": {"source_dir": ".", "sources": ["src/native/alloc/linux_allocation_gateway.cpp"]},
+    "spark_linux_gateway_test_helper": {"source_dir": "tests/native/alloc/linux_gateway", "sources": ["src/native/alloc/linux_allocation_gateway.cpp"]},
+    "spark_linux_gateway_incompatible": {"source_dir": "tests/native/alloc/linux_gateway", "sources": ["src/native/alloc/linux_allocation_gateway.cpp"]},
+    "spark_linux_gateway_external_import": {"source_dir": "tests/native/alloc/linux_gateway", "sources": ["src/native/alloc/linux_allocation_gateway.cpp"]},
+    "spark_linux_gateway_ifunc_helper": {"source_dir": "tests/native/alloc/linux_gateway", "sources": ["src/native/alloc/linux_allocation_gateway.cpp"]},
+    "spark_linux_admission_parser_fixture": {"source_dir": "tests/native/alloc/linux_gateway", "sources": ["tests/native/alloc/linux_gateway/provider.cpp", "tests/native/alloc/linux_gateway/fixture.cpp"], "definition": "SPARK_GATEWAY_PARSER_FIXTURE=1"}
+  }
+}

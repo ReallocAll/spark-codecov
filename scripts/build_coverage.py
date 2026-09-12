@@ -8,6 +8,8 @@ import shutil
 import subprocess
 import sys
 
+from audit_coverage import audit
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -60,21 +62,8 @@ def main():
         run("configure", ["cmake", "--preset", "conan-debug", "-DENDSTONE_SPARK_BUILD_SELFTEST=ON", "-DCMAKE_PROJECT_spark_INCLUDE=" + str(infra / "cmake/coverage.cmake"), "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"])
         build = source / "build/Debug"
         shutil.copy2(build / "coverage-targets.txt", reports)
-        commands = json.loads((build / "compile_commands.json").read_text())
-        count = 0
-        for entry in commands:
-            path = Path(entry["file"])
-            if not path.is_absolute():
-                path = Path(entry["directory"]) / path
-            path = path.resolve()
-            own = path.is_relative_to(source / "src") or path.is_relative_to(source / "tests")
-            covered = "--coverage" in entry.get("command", " ".join(entry.get("arguments", [])))
-            if own != covered:
-                raise RuntimeError(f"Unexpected instrumentation: {path}")
-            count += int(path.is_relative_to(source / "src"))
-        if not count:
-            raise RuntimeError("No Spark implementation compile commands")
-        metadata["implementation-commands"] = count
+        shutil.copy2(build / "coverage-exemptions.json", reports)
+        metadata.update(audit(source, build))
         run("build", ["cmake", "--build", "--preset", "conan-debug", "--parallel", "2"])
         discovery = subprocess.check_output(["ctest", "--test-dir", str(build), "--show-only=json-v1"], cwd=source, text=True)
         (reports / "tests.json").write_text(discovery, encoding="utf-8")
