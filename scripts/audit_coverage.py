@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+import re
 import shlex
 
 
@@ -80,6 +81,10 @@ def audit(source, build):
             exempt_commands += 1
         elif not covered:
             raise ValueError(f"Missing ordinary target coverage: {name}: {path}")
+        else:
+            optimization = [arg for arg in args if re.fullmatch(r"-O(?:[0-9]+|[sgz]|fast)?", arg)]
+            if not optimization or optimization[-1] != "-O1":
+                raise ValueError(f"Expected effective -O1 coverage optimization: {name}: {path}")
         if path.is_relative_to(source / "src"):
             counts["total"] += 1
             counts["exempt" if exempt else "instrumented"] += 1
@@ -88,6 +93,7 @@ def audit(source, build):
     if not counts["instrumented"]:
         raise ValueError("No instrumented Spark implementation compile commands")
     return {"implementation-commands": counts["total"],
+            "coverage-optimization": "-O1",
             "implementation-command-counts": counts,
             "exempt-compile-commands": exempt_commands,
             "coverage-exemptions": manifest,

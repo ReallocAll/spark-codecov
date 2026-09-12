@@ -55,3 +55,17 @@ gh workflow run coverage.yml --repo ReallocAll/spark-codecov --ref main -f sourc
 | [34560339625](https://github.com/ReallocAll/spark-codecov/actions/runs/34560339625) | 完整 SHA 成功解析，随后因缺少组织 token 在 prepare 阶段失败，构建跳过。 |
 
 标签与完整 SHA 的解析已单独验证；未验证标签上传。本文与 README 的后续文档提交不改变已测试实现，且不匹配工作流的代码路径触发条件，不会因此启动完整构建。
+
+
+## 2026-09-12 ELF 编译模式诊断
+
+[诊断运行 34666958708](https://github.com/ReallocAll/spark-codecov/actions/runs/34666958708)固定源提交 `1c0e54981fab6735bee714394012ba905f817b97`，基础设施提交 `e673437148f00cc166d8d550d8706107b59a059f`；[artifact 10289458572](https://github.com/ReallocAll/spark-codecov/actions/runs/34666958708/artifacts/10289458572)保存普通 CTest、编译命令、GDB 指针和反汇编记录。
+
+| 模式 | 普通 ELF 测试 | 第 89 行的候选指针 |
+| --- | --- | --- |
+| 带覆盖率 `-O0` | 失败，CTest 退出码 8 | `Imported == replacement != original` |
+| 不带覆盖率 `-O0` | 失败，CTest 退出码 8 | `Imported == replacement != original` |
+| 带覆盖率 `-O1` | 通过，CTest 退出码 0 | `Imported == original != replacement` |
+| 带覆盖率 `-O2` | 通过，CTest 退出码 0 | `Imported == original != replacement` |
+
+四种模式均在第 89 行获得完整指针证据。第 87 行反汇编及重定位表确认 O0 重新读取已被 hook 的 getpid GOT 槽，O1/O2 则使用先前保存在寄存器中的原始地址；不带覆盖率的 O0 同样失败。正式模式据此采用 Debug＋O1，保持所有插桩及源断言；未扩展 gateway 豁免。诊断仅运行普通 ELF 测试，未单独证明 preload 测试或完整 CTest 通过，也不属于覆盖率验收。临时诊断工作流和脚本已移除，提交历史与运行 artifact 保留证据。正式模式的完整 CTest、报告与上传仍需新运行验证。

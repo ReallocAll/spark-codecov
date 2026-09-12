@@ -44,7 +44,7 @@ gh run download RUN_ID --repo ReallocAll/spark-codecov --dir reports
 
 ## 构建约定与故障
 
-Ubuntu 24.04 显式安装 LLVM/Clang 20、覆盖率 runtime、libc++20 和 libc++abi20，Python 3.12、CMake 3.31.10、Conan 2.32.0、gcovr 8.6。保留源仓库 Conan profile；仅消费者设为 Debug，依赖保留 RelWithDebInfo。外部 CMake hook 给 Spark 和离线测试目标添加 `--coverage -fprofile-update=atomic -O0 -g`，不会修改源 CMake 或测试断言。每次全新构建，不使用缓存。
+Ubuntu 24.04 显式安装 LLVM/Clang 20、覆盖率 runtime、libc++20 和 libc++abi20，Python 3.12、CMake 3.31.10、Conan 2.32.0、gcovr 8.6。保留源仓库 Conan profile；仅消费者设为 Debug，依赖保留 RelWithDebInfo。外部 CMake hook 给 Spark 和离线测试目标添加 `--coverage -fprofile-update=atomic -O1 -g`，不会修改源 CMake 或测试断言。每次全新构建，不使用缓存。 Debug 构建使用低优化 `-O1`，审计每个插桩源码与测试编译命令最后生效的优化选项，并在 metadata 中记录 `coverage-optimization=-O1`。诊断表明 `-O0` 会暴露 ELF 测试对编译器地址加载方式的依赖，使已被 hook 的 GOT 值成为测试候选；`-O1` 保留该测试所需的原始指针，源代码与断言均未修改。优化可能改变行归属及合并代码，因此覆盖率仍需结合该构建模式解读。
 
 构建会校验依赖配置、覆盖率目标和编译命令；CTest 测试数必须大于零，测试后必须产生 gcda。测试失败仍尝试生成报告，整体保持失败且不上传；失败日志也归档。任意历史或未来源 ref 可能不兼容当前工具链、preset 或测试布局，这会明确失败，需检查日志，不能据此断言源代码本身有缺陷。真实执行的测试数写入 metadata，不固定为某个版本的数量。
 

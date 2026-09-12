@@ -102,7 +102,7 @@ file(APPEND "${{PROJECT_BINARY_DIR}}/options.txt" "{name}|${{comp}}|${{link}}\\n
                 self.assertEqual(compile_options, "comp-NOTFOUND")
                 self.assertEqual(link_options, "-nostartfiles")
             else:
-                self.assertEqual(compile_options, "--coverage;-fprofile-update=atomic;-O0;-g")
+                self.assertEqual(compile_options, "--coverage;-fprofile-update=atomic;-O1;-g")
 
     def test_contract_changes_fail(self):
         changes = {
@@ -146,7 +146,7 @@ class AuditTests(unittest.TestCase):
         output = binary / "CMakeFiles" / (target + ".dir") / (Path(path).name + ".o")
         args = ["clang++", "-c", path, "-o", str(output)]
         if covered:
-            args.append("--coverage")
+            args.extend(["--coverage", "-O1"])
         return {"file": path, "directory": str(self.build), "arguments": args, "output": str(output)}
 
     def run_audit(self):
@@ -160,6 +160,23 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(result["implementation-command-counts"], {"total": 1, "instrumented": 1, "exempt": 0})
         self.assertEqual(result["exempt-compile-commands"], 2)
         self.assertEqual(result["tests-skipped-by-coverage-policy"], 0)
+        self.assertEqual(result["coverage-optimization"], "-O1")
+
+    def test_last_optimization_wins(self):
+        self.entries[-1]["arguments"].insert(1, "-O2")
+        self.assertEqual(self.run_audit()["coverage-optimization"], "-O1")
+
+    def test_optimization_override_or_absence_fails(self):
+        for option in ("-O0", "-O2", "-O3", "-Os", "-Oz", "-Og", "-Ofast", "-O", None):
+            with self.subTest(option=option):
+                saved = self.entries[2]["arguments"].copy()
+                if option is None:
+                    self.entries[2]["arguments"].remove("-O1")
+                else:
+                    self.entries[2]["arguments"].append(option)
+                with self.assertRaisesRegex(ValueError, "effective -O1"):
+                    self.run_audit()
+                self.entries[2]["arguments"] = saved
 
     def test_historical_five_implementation_exemptions(self):
         self.manifest["exemptions"] = []
