@@ -3,12 +3,14 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 
 from audit_coverage import audit
+from python_runtime import shared_runtime
 
 
 def main():
@@ -48,6 +50,9 @@ def main():
             run("version-" + tool.replace("+", "p"), [tool, "--version"])
             metadata["toolchains"][tool] = (reports / ("version-" + tool.replace("+", "p") + ".log")).read_text().splitlines()[1:]
         metadata["conan-profile-sha256"] = profile_hash
+        runtime = shared_runtime()
+        os.environ["SPARK_TEST_LIBPYTHON"] = str(runtime)
+        metadata["python-test-runtime"] = str(runtime)
         run("conan", ["conan", "install", ".", "--build=missing", "-s:h", "&:build_type=Debug", "--format=json", "--out-file=" + str(reports / "conan-graph.json")])
         graph = json.loads((reports / "conan-graph.json").read_text())["graph"]["nodes"]
         nodes = list(graph.values()) if isinstance(graph, dict) else graph
@@ -59,7 +64,7 @@ def main():
                 raise RuntimeError("Dependency build_type changed: " + str(node.get("ref")))
         if hashlib.sha256(profile.read_bytes()).hexdigest() != profile_hash:
             raise RuntimeError("Conan profile changed")
-        run("configure", ["cmake", "--preset", "conan-debug", "-DENDSTONE_SPARK_BUILD_SELFTEST=ON", "-DCMAKE_PROJECT_spark_INCLUDE=" + str(infra / "cmake/coverage.cmake"), "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"])
+        run("configure", ["cmake", "--preset", "conan-debug", "-DENDSTONE_SPARK_BUILD_SELFTEST=ON", "-DCMAKE_PROJECT_spark_INCLUDE=" + str(infra / "cmake/coverage.cmake"), "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON", "-DSPARK_TEST_LIBPYTHON:FILEPATH=" + str(runtime)])
         build = source / "build/Debug"
         shutil.copy2(build / "coverage-targets.txt", reports)
         shutil.copy2(build / "coverage-exemptions.json", reports)
@@ -73,7 +78,7 @@ def main():
         failed = run("ctest", ["ctest", "--test-dir", str(build), "--output-on-failure", "--no-tests=error", "--parallel", "1", "--output-junit", str(reports / "ctest.xml")], check=False) != 0
         if not any(build.rglob("*.gcda")):
             raise RuntimeError("Tests produced no gcda files")
-        run("gcovr", ["gcovr", "--root", str(source), "--filter", "src/", "--merge-lines", "--gcov-executable", "llvm-cov-20 gcov", "--xml", str(reports / "coverage.xml"), "--html-details", str(reports / "index.html"), "--html-self-contained", "--json-summary", str(reports / "summary.json"), "--print-summary", str(build)])
+        run("gcovr", ["gcovr", "--root", str(source), "--filter", "src/", "--merge-lines", "--merge-mode-functions=separate", "--gcov-executable", "llvm-cov-20 gcov", "--xml", str(reports / "coverage.xml"), "--html-details", str(reports / "index.html"), "--html-self-contained", "--json-summary", str(reports / "summary.json"), "--print-summary", str(build)])
         metadata["status"] = "failed" if failed else "success"
     except Exception as exc:
         failed = True
